@@ -1,0 +1,19 @@
+\begin{tikzpicture}[
+  component/.style={draw, rounded corners=1pt, align=center,
+    minimum height=8mm, text width=30mm, inner sep=2pt, font=\footnotesize},
+  transfer/.style={draw, rounded corners=1pt, align=center,
+    text width=74mm, inner sep=4pt, font=\footnotesize},
+  flow/.style={-{Stealth[length=4pt]}, semithick},
+  both/.style={{Stealth[length=4pt]}-{Stealth[length=4pt]}, semithick}]
+  \node[component] (author) at (-20mm,0) {Desktop Creator};
+  \node[component] (sqlite) at (20mm,0) {Local SQLite\\editable itinerary};
+  \node[transfer] (file) at (0,-14mm) {\texttt{.tt} file\\Trip ID, revision, schedule, and embedded assets};
+  \node[transfer,below=5mm of file] (viewer) {Mobile Viewer\\Decode, validate, and compare revisions};
+  \node[component] (records) at ([xshift=-20mm,yshift=-9mm]viewer.south) {Local trip store\\and asset files};
+  \node[component] (check) at ([xshift=20mm,yshift=-9mm]viewer.south) {Local traveler\\checklist};
+  \draw[both] (author) -- (sqlite);
+  \draw[flow] (author.south) -- (author.south |- file.north);
+  \draw[flow] (file) -- (viewer);
+  \draw[flow] (viewer.south -| records.north) -- (records.north);
+  \draw[both] (viewer.south -| check.north) -- (check.north);
+\end{tikzpicture}

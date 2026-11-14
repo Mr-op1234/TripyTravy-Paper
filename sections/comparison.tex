@@ -1,0 +1,42 @@
+\section{Functional Comparison with Travefy}
+\label{sec:comparison}
+Both products cover the sequence from an advisor's trip outline to a traveler opening a scheduled item. Table~\ref{tab:features} compares the observed TripyTravy beta workflows with Travefy's documented behavior. Section~\ref{sec:features} specifies the additional stable workflows.
+
+\begin{table*}[t]
+\caption{Documented itinerary workflows and implementation boundaries}
+\label{tab:features}
+\centering
+\small
+\renewcommand{\arraystretch}{1.16}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{0.18\textwidth}*{2}{>{\raggedright\arraybackslash}X}@{}}
+\toprule
+Operation & TripyTravy & Travefy \\
+\midrule
+Create a trip and organize days &
+Edit a local trip with date-range days and manual day ordering. &
+Build a day-based itinerary. Events can be moved between days \cite{travefybuilder,travefymove}. \\
+Add scheduled events &
+Create typed cards and enter dates, times, location, and event details in the desktop workspace. &
+Add scheduled places and activities with time and timezone fields. Type-specific tools include flight lookup and lodging check-in and check-out entries \cite{travefytime,travefyflight,travefylodging}. \\
+Add trip guidance and supporting files &
+Attach notes, event photos, and documents to the itinerary. Local embedded assets are indexed by digest on export. &
+Add general trip information and attach documents at the trip or event level. An advisor can add images and videos to events \cite{travefyinfo,travefyfiles,travefymedia}. \\
+Use itinerary locations &
+Store place data and send a saved place or ordered day stops to Google Maps. &
+Display places with addresses on the itinerary map \cite{travefymap}. \\
+Share and read &
+Send a \texttt{.tt} snapshot and open it in the mobile Viewer. The file provides the schedule and bundled assets for local viewing. &
+Share a web link, invitation, or PDF. Trip Plans can save the trip on a device. Its traveler account is optional for basic viewing \cite{travefyshare,travefyapp}. \\
+Issue and receive a revision &
+Export the edited itinerary again and send the new file. The receiver applies the newer matching revision on import. &
+Edit the hosted itinerary. A shared web link reflects the revision when opened or refreshed \cite{travefyupdates}. \\
+Prepare for offline travel &
+Transfer the file before leaving connectivity or obtain it by direct transfer. External map and media URLs still use external services. &
+Use the offline download workflow. Travefy advises opening items and attachments online to ensure the required data is available \cite{travefyoffline}. \\
+\bottomrule
+\end{tabularx}
+\end{table*}
+
+The booking examples are where the functional comparison matters most. An agent can represent a hotel arrival as a timed lodging card and put the voucher next to it in either product. In TripyTravy that information enters SQLite and is exported as part of the trip package. In Travefy the same task is part of a hosted advisor workflow, with tools for importing supplier content and reusing library entries \cite{travefybuilder}. Similarly, a flight card in TripyTravy records details entered by the agent, while Travefy documents a lookup path for populating a flight event \cite{travefyflight}. Neither the event form nor the category label alone establishes a live source of booking updates.
+
+Travefy sells the advisor tools in a subscription that also includes business functions beyond itinerary authoring \cite{travefypricing}. TripyTravy's measured exchange path has no account service or hosted itinerary record. The products share authoring tasks, but their publish steps leave different state on the traveler's device. TripyTravy's file contains an independently readable copy. Travefy's hosted link identifies the current online itinerary, and a downloaded version can also be read offline.

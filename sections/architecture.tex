@@ -1,0 +1,17 @@
+\section{System Architecture}
+\label{sec:architecture}
+
+\begin{figure}[t]
+\centering
+\input{figures/delivery}
+\caption{The Creator publishes a snapshot. The Viewer stores the imported itinerary and traveler checklist in separate local records.}
+\label{fig:delivery}
+\end{figure}
+
+\subsection{Shared core and storage}
+The Dart core provides the shared entities, import and export use cases, and interfaces for data stores and the file wrapper. These interfaces apply the ports-and-adapters pattern \cite{hex} at the package boundary. The desktop screens also call the SQLite layer directly for routine editing. The Android application wires the shared import service to JSON files for trips and checklist records and to a file store for binary assets. Desktop and mobile therefore share the exchange model while retaining storage suited to their roles (Fig.~\ref{fig:delivery}).
+
+The stable architecture specifies transactional Drift/SQLite storage in the Viewer and atomic writes for extracted assets. Import validates and stages the assets before making the new schedule visible. The schedule's transaction preserves the traveler's checklist and carries forward the completion state. The core exchange can operate after receipt without a server or analytics service. Optional download, messaging, routing, and map services have their own network boundaries.
+
+\subsection{Attachment indexing}
+The exporter uses SHA-256 \cite{sha} to address embedded document and event-photo bytes. When records refer to identical bytes, the package can retain their references and store one copy of the blob. Asset descriptors give the digest, size, and offset within the concatenated asset region. The importer checks attachment bounds and verifies the hashes of all indexed assets in versioned exports. The mobile asset store uses the same digest as the local filename. Legacy inline data can be indexed on re-export. Banner embedding uses a separate field and falls outside the attachment measurement in Section~\ref{sec:evaluation}.

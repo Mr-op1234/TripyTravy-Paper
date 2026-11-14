@@ -1,0 +1,26 @@
+{
+  "legacy_wrapper_accepts_modified_metadata": true,
+  "deduplication": [
+    {
+      "references": 2,
+      "shared_bytes": 1049768,
+      "distinct_bytes": 2098680
+    },
+    {
+      "references": 4,
+      "shared_bytes": 1050196,
+      "distinct_bytes": 4196932
+    },
+    {
+      "references": 8,
+      "shared_bytes": 1051052,
+      "distinct_bytes": 8393436
+    }
+  ],
+  "kashmir": {
+    "fixture_bytes": 2638655,
+    "saved_trips": 1,
+    "saved_revision_after_replay": 1,
+    "checklist_items_preserved": 1
+  }
+}

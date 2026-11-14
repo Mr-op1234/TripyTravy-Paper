@@ -1,0 +1,25 @@
+\section{Technology Stack and Target Platforms}
+\label{sec:stack}
+Flutter provides the application layer for the desktop Creator and mobile Viewer. The Creator targets Windows, macOS, and Linux. The Viewer targets Android and iOS. Flutter supports native deployment to all five operating systems \cite{flutterplatforms}. Both applications use Dart for their feature logic and depend on \texttt{tripytravy\_core} for the trip model, attachment indexing, and import and export operations. The stable stack uses Protobuf for exchange metadata, Rust through Flutter FFI for packing and unpacking, Drift/SQLite for mobile records, and MapLibre for local map rendering. Table~\ref{tab:stack} reports the evaluated stack.
+
+\begin{table}[t]
+\caption{Implementation stack}
+\label{tab:stack}
+\centering
+\small
+\renewcommand{\arraystretch}{1.12}
+\begin{tabularx}{\columnwidth}{@{}>{\raggedright\arraybackslash}p{0.26\columnwidth}>{\raggedright\arraybackslash}X@{}}
+\toprule
+Component & Technologies and role \\
+\midrule
+Applications & Flutter and Dart for authoring, import, schedule viewing, and checklist operations. \\
+Desktop storage & SQLite through \texttt{sqflite\_common\_ffi}. File picker, clipboard, and application-directory plugins support local authoring. \\
+Mobile storage & JSON records and content-addressed files using Dart file I/O and plugin-provided application directories. \\
+Shared exchange & Dart serialization, \texttt{crypto} for SHA-256, and a binary container with UTF-8 JSON metadata. \\
+Native runners & Windows C++ and CMake. Android Kotlin and Gradle with Flutter platform channels. \\
+Native prototype & Rust and Cargo with AES-GCM, Zstandard, HKDF, and Argon2id. Evaluated as a standalone library. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+The desktop code handles SQLite initialization and application support directories on Windows, macOS, and Linux. It also selects operating-system commands for opening the export location. The evaluated checkout includes a Windows runner for the Creator and an Android runner for the Viewer. The study did not build or test the macOS, Linux, or iOS targets. An iOS build can reuse the Dart import and viewing logic. File receipt, document opening, and map dispatch would need iOS counterparts to the Kotlin handlers in Section~\ref{sec:native}.

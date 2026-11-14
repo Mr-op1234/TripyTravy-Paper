@@ -1,0 +1,7 @@
+\begin{abstract}
+TripyTravy is a local-first travel itinerary system for agent authoring and traveler access. Its stable design combines a desktop Creator, a mobile Viewer, and a versioned \texttt{.tt} file containing schedules, locations, and supporting material. The agent can password-protect a transfer and change that password through a new export. The Viewer unlocks each protected package at import and opens the saved itinerary without a password prompt. The paper traces trip, day, event, location, image, and document workflows on both sides and compares them with Travefy's documented features. The evaluation uses the available beta implementation. A probe migrated an existing Kashmir itinerary and preserved checklist state. In a controlled test, eight references to one 1 MiB attachment produced a package 87.5\% smaller than eight distinct attachments of equal size. The beta wrapper accepted a modified metadata byte. The stable design uses authenticated encryption from a standalone Rust prototype whose application integration remains to be evaluated.
+\end{abstract}
+
+\begin{IEEEkeywords}
+travel itinerary authoring, local-first software, offline import, versioned snapshots, content-addressed storage
+\end{IEEEkeywords}

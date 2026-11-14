@@ -1,0 +1,12 @@
+\section{Native Integration}
+\label{sec:native}
+
+\subsection{Windows and Android integration in the beta}
+The Windows application uses a native SQLite library through the Dart FFI adapter for editing and export metadata. File-picker and clipboard integrations bring local files into the workspace. The export path can save a copy using the platform save dialog and reveal the resulting file through Windows Explorer. This leaves distribution to the agent's chosen transfer channel.
+
+On Android, the Kotlin activity accepts a matching \texttt{ACTION\_VIEW} intent. It reads the associated URI through Android's content resolver. The activity buffers bytes for an initial launch and forwards subsequent intents over the Flutter method channel. The Dart import service also accepts files from the application's file picker. Both binary entry paths use the same decoder and repository logic.
+
+Document opening reverses the handoff. The application resolves the local attachment, supplies a content URI through Android's \texttt{FileProvider}, and launches an \texttt{ACTION\_VIEW} chooser with a read grant \cite{provider}. The receiving application needs to handle the given file type. For a map request the activity targets Google Maps first, then falls back to another registered handler if needed. File association, local document access, and map dispatch are separate native operations.
+
+\subsection{Stable file receipt}
+The stable Viewer sends picker and system-open requests to the same validation pipeline. A share provider can supply a content stream whose URI lacks a filename extension. On Android, the handler can query the provider's display name and inspect the first four bytes for the \texttt{TTRV} marker. The name and marker identify candidates. The decoder checks the full envelope before accepting a package. The iOS target needs the corresponding Files and share-sheet integration. The stable design also specifies a browser-based Viewer for local import. Cross-platform build, file association, and offline runtime behavior remain to be validated.

@@ -1,0 +1,616 @@
+diff --git a/apps/agent_desktop/lib/data/itinerary_database.dart b/apps/agent_desktop/lib/data/itinerary_database.dart
+index 11f7d06..36bc315 100644
+--- a/apps/agent_desktop/lib/data/itinerary_database.dart
++++ b/apps/agent_desktop/lib/data/itinerary_database.dart
+@@ -769,7 +769,7 @@ class ItineraryDatabase {
+ 
+     final db = await openDatabase(
+       dbPath,
+-      version: 6,
++      version: 7,
+       onConfigure: (db) async {
+         await db.execute('PRAGMA foreign_keys = ON;');
+       },
+@@ -804,6 +804,11 @@ class ItineraryDatabase {
+         if (oldVersion < 6) {
+           await _createEventAndDocTables(db);
+         }
++        if (oldVersion < 7) {
++          await db.execute('ALTER TABLE itineraries ADD COLUMN export_id TEXT');
++          await db.execute(
++              'ALTER TABLE itineraries ADD COLUMN export_revision INTEGER NOT NULL DEFAULT 0');
++        }
+       },
+     );
+ 
+@@ -1023,7 +1028,9 @@ class ItineraryDatabase {
+         start_date TEXT,
+         end_date TEXT,
+         tagline TEXT,
+-        description TEXT
++        description TEXT,
++        export_id TEXT,
++        export_revision INTEGER NOT NULL DEFAULT 0
+       )
+     ''');
+ 
+@@ -1045,6 +1052,31 @@ class ItineraryDatabase {
+     return null;
+   }
+ 
++  // Allocate the revision before compiling so concurrent exports have distinct
++  // revision numbers. A failed export can leave a gap in the sequence.
++  Future<({String id, int revision})> reserveExportRevision(int id) async {
++    final db = await database;
++    return db.transaction((txn) async {
++      final count = await txn.rawUpdate('''
++        UPDATE itineraries
++        SET export_id = COALESCE(export_id, 'tt_' || lower(hex(randomblob(16)))),
++            export_revision = export_revision + 1
++        WHERE id = ?
++      ''', [id]);
++      if (count == 0) throw StateError('Itinerary no longer exists.');
++      final row = (await txn.query(
++        'itineraries',
++        columns: ['export_id', 'export_revision'],
++        where: 'id = ?',
++        whereArgs: [id],
++      )).single;
++      return (
++        id: row['export_id'] as String,
++        revision: row['export_revision'] as int,
++      );
++    });
++  }
++
+   static DateTime? parseFlexibleDate(String? raw) {
+     if (raw == null || raw.trim().isEmpty) return null;
+     final text = raw.trim();
+diff --git a/apps/agent_desktop/lib/data/itinerary_tt_compiler.dart b/apps/agent_desktop/lib/data/itinerary_tt_compiler.dart
+index 5601a78..9ae05ca 100644
+--- a/apps/agent_desktop/lib/data/itinerary_tt_compiler.dart
++++ b/apps/agent_desktop/lib/data/itinerary_tt_compiler.dart
+@@ -16,6 +16,7 @@ class ItineraryTtCompiler {
+     String? userPin,
+     bool isTemplate = false,
+     HexagonalDiContainer? diContainer,
++    ({String id, int revision})? exportIdentity,
+   }) async {
+     var tripPackage = toTripPackage(
+       trip: trip,
+@@ -25,6 +26,13 @@ class ItineraryTtCompiler {
+       isTemplate: isTemplate,
+     );
+ 
++    if (exportIdentity != null) {
++      tripPackage = tripPackage.copyWith(
++        tripId: exportIdentity.id,
++        revision: exportIdentity.revision,
++        legacyTripId: trip.id.toString(),
++      );
++    }
+     tripPackage = tripPackage.copyWith(bannerImage: await _embedBanner(trip.imagePath));
+ 
+     final di = diContainer ?? HexagonalDiContainer();
+diff --git a/apps/agent_desktop/lib/ui/trip_detail_screen.dart b/apps/agent_desktop/lib/ui/trip_detail_screen.dart
+index dff1776..8be3d80 100644
+--- a/apps/agent_desktop/lib/ui/trip_detail_screen.dart
++++ b/apps/agent_desktop/lib/ui/trip_detail_screen.dart
+@@ -325,11 +325,14 @@ class _TripDetailScreenState extends State<TripDetailScreen> {
+     );
+ 
+     try {
++      final exportIdentity = await ItineraryDatabase.instance
++          .reserveExportRevision(_currentTrip.id);
+       final bytes = await ItineraryTtCompiler.compile(
+         trip: _currentTrip,
+         days: _days,
+         events: _events,
+         documents: _documents,
++        exportIdentity: exportIdentity,
+       );
+ 
+       final defaultFileName = ItineraryFileManager.generateTtFileName(_currentTrip.title);
+diff --git a/apps/agent_desktop/test/exported_itineraries_test.dart b/apps/agent_desktop/test/exported_itineraries_test.dart
+index ee2399c..bfa7345 100644
+--- a/apps/agent_desktop/test/exported_itineraries_test.dart
++++ b/apps/agent_desktop/test/exported_itineraries_test.dart
+@@ -2,6 +2,7 @@ import 'dart:io';
+ import 'dart:typed_data';
+ import 'package:file_picker/file_picker.dart';
+ import 'package:flutter/material.dart';
++import 'package:flutter/services.dart';
+ import 'package:flutter_test/flutter_test.dart';
+ import 'package:agent_desktop/data/itinerary_database.dart';
+ import 'package:agent_desktop/data/itinerary_file_manager.dart';
+@@ -323,6 +324,15 @@ void main() {
+ 
+       bool savePickerCalled = false;
+       bool explorerOpened = false;
++      TripPackage? exported;
++      final messenger =
++          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
++      const pathProvider = MethodChannel('plugins.flutter.io/path_provider');
++      messenger.setMockMethodCallHandler(pathProvider, (_) async => tempDir.path);
++      addTearDown(() async {
++        await ItineraryDatabase.instance.close();
++        messenger.setMockMethodCallHandler(pathProvider, null);
++      });
+ 
+       TripDetailScreen.saveFilePickerOverride = ({
+         required String fileName,
+@@ -333,6 +343,9 @@ void main() {
+         List<String>? allowedExtensions,
+       }) async {
+         savePickerCalled = true;
++        final payload = await const TtrvContainerCipherAdapter()
++            .unpackContainer(containerBytes: bytes);
++        exported = const ProtobufTripMapper().fromWireBytes(payload.protobufBytes);
+         return Uri.file('${tempDir.path}/Vietnam/$fileName');
+       };
+ 
+@@ -345,17 +358,18 @@ void main() {
+         ItineraryFileManager.openExplorerOverride = null;
+       });
+ 
+-      const sampleTrip = DestinationItem(
+-        id: 2,
+-        title: 'Vietnam',
+-        subtitle: 'Good Trips, Brighter Stories',
+-        duration: '10 Days',
+-        dateRange: 'Nov 1 - 10, 2026',
+-        imagePath: '',
+-      );
++      final sampleTrip = (await tester.runAsync(
++        () => ItineraryDatabase.instance.insertItinerary(
++          title: 'Vietnam',
++          subtitle: 'Good Trips, Brighter Stories',
++          duration: '10 Days',
++          dateRange: 'Nov 1 - 10, 2026',
++          imagePath: '',
++        ),
++      ))!;
+ 
+       await tester.pumpWidget(
+-        const MaterialApp(
++        MaterialApp(
+           home: TripDetailScreen(
+             item: sampleTrip,
+             initialDays: [],
+@@ -387,7 +401,13 @@ void main() {
+ 
+       // 5. Tap "Export to .tt file"
+       await tester.tap(find.text('Export to .tt file'));
+-      await tester.pump();
++      final timeout = Stopwatch()..start();
++      while (!explorerOpened && timeout.elapsed < const Duration(seconds: 5)) {
++        await tester.pump();
++        await tester.runAsync(() => Future<void>.delayed(
++              const Duration(milliseconds: 10),
++            ));
++      }
+       await tester.pump(const Duration(milliseconds: 300));
+       await tester.pump(const Duration(milliseconds: 300));
+ 
+@@ -395,6 +415,13 @@ void main() {
+       expect(savePickerCalled, isTrue);
+       expect(explorerOpened, isTrue);
+       expect(find.byType(SnackBar), findsOneWidget);
++      expect(exported?.tripId, matches(r'^tt_[0-9a-f]{32}$'));
++      expect(exported?.revision, 1);
++      expect(exported?.legacyTripId, sampleTrip.id.toString());
++      final next = await tester.runAsync(() => ItineraryDatabase.instance
++          .reserveExportRevision(sampleTrip.id));
++      expect(next?.id, exported?.tripId);
++      expect(next?.revision, 2);
+     });
+   });
+ }
+diff --git a/apps/client_mobile/android/app/src/main/kotlin/com/tripytravy/client_mobile/MainActivity.kt b/apps/client_mobile/android/app/src/main/kotlin/com/tripytravy/client_mobile/MainActivity.kt
+index 91181a2..113122c 100644
+--- a/apps/client_mobile/android/app/src/main/kotlin/com/tripytravy/client_mobile/MainActivity.kt
++++ b/apps/client_mobile/android/app/src/main/kotlin/com/tripytravy/client_mobile/MainActivity.kt
+@@ -81,7 +81,7 @@ class MainActivity : FlutterActivity() {
+             }
+         }
+ 
+-        handleIntent(intent)
++        handleIntent(intent, initial = true)
+     }
+ 
+     override fun onNewIntent(intent: Intent) {
+@@ -90,7 +90,7 @@ class MainActivity : FlutterActivity() {
+         handleIntent(intent)
+     }
+ 
+-    private fun handleIntent(intent: Intent?) {
++    private fun handleIntent(intent: Intent?, initial: Boolean = false) {
+         if (intent?.action == Intent.ACTION_VIEW) {
+             val uri: Uri? = intent.data
+             if (uri != null) {
+@@ -98,10 +98,10 @@ class MainActivity : FlutterActivity() {
+                     val inputStream = contentResolver.openInputStream(uri)
+                     val bytes = inputStream?.use { it.readBytes() }
+                     if (bytes != null && bytes.isNotEmpty()) {
+-                        if (channel != null) {
+-                            channel?.invokeMethod("onFileOpened", bytes)
+-                        } else {
++                        if (initial) {
+                             initialFileBytes = bytes
++                        } else {
++                            channel?.invokeMethod("onFileOpened", bytes)
+                         }
+                     }
+                 } catch (e: Exception) {
+diff --git a/packages/tripytravy_core/lib/adapters/outbound/persistence/file_trip_repository_adapter.dart b/packages/tripytravy_core/lib/adapters/outbound/persistence/file_trip_repository_adapter.dart
+index d624331..0048a08 100644
+--- a/packages/tripytravy_core/lib/adapters/outbound/persistence/file_trip_repository_adapter.dart
++++ b/packages/tripytravy_core/lib/adapters/outbound/persistence/file_trip_repository_adapter.dart
+@@ -5,7 +5,6 @@ import '../../../domain/entities/trip_package.dart';
+ import '../../../domain/ports/outbound_ports.dart';
+ 
+ /// Production-ready persistent trip repository storing trips as JSON files on disk.
+-/// Thread-safe and atomic across all platforms (Android, iOS, Desktop).
+ class FileTripRepositoryAdapter implements TripRepositoryPort {
+   final Directory baseDirectory;
+   late final Directory _tripsDir;
+@@ -29,15 +28,7 @@ class FileTripRepositoryAdapter implements TripRepositoryPort {
+   @override
+   Future<void> saveTrip(TripPackage trip) async {
+     final file = _getTripFile(trip.tripId);
+-    final tempFile = File('${file.path}.tmp');
+-
+-    final jsonStr = jsonEncode(trip.toJson());
+-    await tempFile.writeAsString(jsonStr, flush: true);
+-
+-    if (await file.exists()) {
+-      await file.delete();
+-    }
+-    await tempFile.rename(file.path);
++    await _replaceFile(file, jsonEncode(trip.toJson()));
+ 
+     // If there is no active trip set, make this newly saved trip active
+     final currentActive = await getActiveTripId();
+@@ -116,11 +107,18 @@ class FileTripRepositoryAdapter implements TripRepositoryPort {
+ 
+   @override
+   Future<void> setActiveTripId(String tripId) async {
+-    final temp = File('${_activeTripFile.path}.tmp');
+-    await temp.writeAsString(tripId.trim(), flush: true);
+-    if (await _activeTripFile.exists()) {
+-      await _activeTripFile.delete();
++    await _replaceFile(_activeTripFile, tripId.trim());
++  }
++
++  Future<void> _replaceFile(File file, String contents) async {
++    final staging = await baseDirectory.createTemp('.trip_write_');
++    final temp = File(p.join(staging.path, 'data'));
++    try {
++      await temp.writeAsString(contents, flush: true);
++      await temp.rename(file.path);
++    } finally {
++      if (await temp.exists()) await temp.delete();
++      await staging.delete();
+     }
+-    await temp.rename(_activeTripFile.path);
+   }
+ }
+diff --git a/packages/tripytravy_core/lib/domain/entities/trip_package.dart b/packages/tripytravy_core/lib/domain/entities/trip_package.dart
+index 28cadfe..7df9ca4 100644
+--- a/packages/tripytravy_core/lib/domain/entities/trip_package.dart
++++ b/packages/tripytravy_core/lib/domain/entities/trip_package.dart
+@@ -171,6 +171,8 @@ class ItineraryDay {
+ 
+ class TripPackage {
+   final String tripId;
++  final int revision;
++  final String? legacyTripId;
+   final String title;
+   final String subtitle;
+   final String bannerImage;
+@@ -190,6 +192,8 @@ class TripPackage {
+ 
+   const TripPackage({
+     required this.tripId,
++    this.revision = 0,
++    this.legacyTripId,
+     required this.title,
+     this.subtitle = '',
+     this.bannerImage = '',
+@@ -210,6 +214,8 @@ class TripPackage {
+ 
+   TripPackage copyWith({
+     String? tripId,
++    int? revision,
++    String? legacyTripId,
+     String? title,
+     String? subtitle,
+     String? bannerImage,
+@@ -229,6 +235,8 @@ class TripPackage {
+   }) {
+     return TripPackage(
+       tripId: tripId ?? this.tripId,
++      revision: revision ?? this.revision,
++      legacyTripId: legacyTripId ?? this.legacyTripId,
+       title: title ?? this.title,
+       subtitle: subtitle ?? this.subtitle,
+       bannerImage: bannerImage ?? this.bannerImage,
+@@ -250,6 +258,8 @@ class TripPackage {
+ 
+   Map<String, dynamic> toJson() => {
+         'tripId': tripId,
++        if (revision != 0) 'revision': revision,
++        if (legacyTripId != null) 'legacyTripId': legacyTripId,
+         'title': title,
+         'subtitle': subtitle,
+         'bannerImage': bannerImage,
+@@ -270,6 +280,8 @@ class TripPackage {
+ 
+   factory TripPackage.fromJson(Map<String, dynamic> json) => TripPackage(
+         tripId: (json['tripId'] as String?) ?? '',
++        revision: (json['revision'] as int?) ?? 0,
++        legacyTripId: json['legacyTripId'] as String?,
+         title: (json['title'] as String?) ?? '',
+         subtitle: (json['subtitle'] as String?) ?? '',
+         bannerImage: (json['bannerImage'] as String?) ?? '',
+diff --git a/packages/tripytravy_core/lib/domain/usecases/mobile_trip_manager_service.dart b/packages/tripytravy_core/lib/domain/usecases/mobile_trip_manager_service.dart
+index 67ef944..1304967 100644
+--- a/packages/tripytravy_core/lib/domain/usecases/mobile_trip_manager_service.dart
++++ b/packages/tripytravy_core/lib/domain/usecases/mobile_trip_manager_service.dart
+@@ -1,10 +1,8 @@
+-import 'dart:convert';
+ import 'dart:io';
+ import '../../adapters/outbound/crypto/ttrv_container_cipher_adapter.dart';
+ import '../../adapters/outbound/persistence/file_cas_attachment_storage_adapter.dart';
+ import '../../adapters/outbound/persistence/file_checklist_repository_adapter.dart';
+ import '../../adapters/outbound/persistence/file_trip_repository_adapter.dart';
+-import '../entities/attachment_descriptor.dart';
+ import '../entities/traveler_checklist.dart';
+ import '../entities/trip_package.dart';
+ import '../ports/outbound_ports.dart';
+@@ -20,6 +18,7 @@ class MobileTripManagerService {
+   final ContainerCipherPort cipher;
+   final ImportTripContainerUseCase importTripUseCase;
+   final ExportTripContainerUseCase exportTripUseCase;
++  Future<void>? _pendingImport;
+ 
+   MobileTripManagerService({
+     required this.tripRepository,
+@@ -61,14 +60,14 @@ class MobileTripManagerService {
+   Future<TripPackage> importTripFromContainer(
+     List<int> containerBytes, {
+     String? userPin,
+-  }) async {
+-    final trip = await importTripUseCase.execute(
+-      containerBytes: containerBytes,
+-      userPin: userPin,
+-    );
+-    await tripRepository.saveTrip(trip);
+-    await tripRepository.setActiveTripId(trip.tripId);
+-    return trip;
++  }) {
++    return _queueImport(() async {
++      final trip = await importTripUseCase.execute(
++        containerBytes: containerBytes,
++        userPin: userPin,
++      );
++      return _applyImport(trip);
++    });
+   }
+ 
+   /// Imports a .ttrv container file from a file path.
+@@ -83,9 +82,77 @@ class MobileTripManagerService {
+   /// Imports a trip directly from JSON map/payload.
+   Future<TripPackage> importTripFromJson(Map<String, dynamic> json) async {
+     final trip = TripPackage.fromJson(json);
+-    await tripRepository.saveTrip(trip);
+-    await tripRepository.setActiveTripId(trip.tripId);
+-    return trip;
++    if (trip.revision != 0) {
++      throw const FormatException('Import itinerary revisions as .tt files.');
++    }
++    return _queueImport(() => _applyImport(trip));
++  }
++
++  Future<TripPackage> _queueImport(Future<TripPackage> Function() import) {
++    final result = _pendingImport?.then((_) => import()) ?? import();
++    _pendingImport = result.then<void>((_) {}, onError: (Object _) {});
++    return result;
++  }
++
++  Future<TripPackage> _applyImport(TripPackage trip) async {
++    _validateImportIdentity(trip);
++    final existing = await tripRepository.getTripById(trip.tripId);
++    TripPackage? legacy;
++    if (trip.legacyTripId case final legacyId?) {
++      final candidate = await tripRepository.getTripById(legacyId);
++      if (candidate != null && _sharesEventIdentity(candidate, trip)) {
++        legacy = candidate;
++      }
++    } else if (_numericId.hasMatch(trip.tripId)) {
++      // An old file may be reopened after the saved trip has been upgraded.
++      for (final saved in await tripRepository.listAllTrips()) {
++        if (saved.legacyTripId == trip.tripId &&
++            _sharesEventIdentity(saved, trip)) {
++          await tripRepository.setActiveTripId(saved.tripId);
++          return saved;
++        }
++      }
++    }
++
++    final saved = (existing != null && existing.revision > 0 &&
++            existing.revision >= trip.revision)
++        ? existing
++        : trip.copyWith(isCompleted: (existing ?? legacy)?.isCompleted);
++    if (existing == null && legacy != null) {
++      final checklist =
++          await checklistRepository.getChecklistForTrip(legacy.tripId);
++      await checklistRepository
++          .saveChecklist(checklist.copyWith(tripId: trip.tripId));
++    }
++    if (!identical(existing, saved)) await tripRepository.saveTrip(saved);
++    await tripRepository.setActiveTripId(saved.tripId);
++    if (legacy != null) await deleteTrip(legacy.tripId);
++    return saved;
++  }
++
++  static final _numericId = RegExp(r'^[0-9]+$');
++  static final _persistentId = RegExp(r'^tt_[0-9a-f]{32}$');
++  static final _validId = RegExp(r'^[a-zA-Z0-9_-]{1,128}$');
++
++  static void _validateImportIdentity(TripPackage trip) {
++    final versioned = _persistentId.hasMatch(trip.tripId);
++    if (!_validId.hasMatch(trip.tripId) ||
++        (versioned ? trip.revision <= 0 : trip.revision != 0) ||
++        (trip.legacyTripId != null &&
++            (trip.revision == 0 || !_numericId.hasMatch(trip.legacyTripId!)))) {
++      throw const FormatException('Invalid itinerary ID or revision.');
++    }
++  }
++
++  static bool _sharesEventIdentity(TripPackage oldTrip, TripPackage newTrip) {
++    final eventIds = {
++      for (final day in oldTrip.days)
++        for (final event in day.events)
++          if (event.eventId.isNotEmpty) event.eventId,
++    };
++    return newTrip.days.any(
++      (day) => day.events.any((event) => eventIds.contains(event.eventId)),
++    );
+   }
+ 
+   /// Exports a trip package and all associated offline assets to a standalone .ttrv container.
+diff --git a/packages/tripytravy_core/lib/domain/usecases/trip_container_usecases.dart b/packages/tripytravy_core/lib/domain/usecases/trip_container_usecases.dart
+index 78f8bae..f5c8478 100644
+--- a/packages/tripytravy_core/lib/domain/usecases/trip_container_usecases.dart
++++ b/packages/tripytravy_core/lib/domain/usecases/trip_container_usecases.dart
+@@ -156,16 +156,21 @@ class ImportTripContainerUseCase {
+     final trip = mapper.fromWireBytes(unpacked.protobufBytes);
+ 
+     for (final asset in trip.allAssets) {
+-      if (asset.byteOffset + asset.byteSize <= unpacked.concatenatedAssets.length) {
+-        final blob = unpacked.concatenatedAssets.sublist(
+-          asset.byteOffset,
+-          asset.byteOffset + asset.byteSize,
+-        );
+-        if ((asset.assetId.startsWith('document_') || asset.assetId.startsWith('photo_')) && sha256.convert(blob).toString() != asset.sha256Checksum) {
+-          throw FormatException('Document checksum mismatch: ${asset.filename}');
+-        }
+-        await storage.putRawBlob(asset.sha256Checksum, blob);
++      final end = asset.byteOffset + asset.byteSize;
++      if (asset.byteOffset < 0 ||
++          asset.byteSize < 0 ||
++          end < asset.byteOffset ||
++          end > unpacked.concatenatedAssets.length) {
++        throw FormatException('Invalid attachment bounds: ${asset.filename}');
++      }
++      final blob = unpacked.concatenatedAssets.sublist(asset.byteOffset, end);
++      final verifyChecksum = trip.revision > 0 ||
++          asset.assetId.startsWith('document_') ||
++          asset.assetId.startsWith('photo_');
++      if (verifyChecksum && sha256.convert(blob).toString() != asset.sha256Checksum) {
++        throw FormatException('Attachment checksum mismatch: ${asset.filename}');
+       }
++      await storage.putRawBlob(asset.sha256Checksum, blob);
+     }
+ 
+     return trip;
+diff --git a/packages/tripytravy_core/test/mobile_trip_manager_test.dart b/packages/tripytravy_core/test/mobile_trip_manager_test.dart
+index a04cdaf..17c1d68 100644
+--- a/packages/tripytravy_core/test/mobile_trip_manager_test.dart
++++ b/packages/tripytravy_core/test/mobile_trip_manager_test.dart
+@@ -18,6 +18,94 @@ void main() {
+     }
+   });
+ 
++  const legacyKashmir = TripPackage(
++    tripId: '4',
++    title: 'Kashmir',
++    startDateIso8601: '2026-11-25',
++    endDateIso8601: '2026-11-29',
++    primaryTimezoneIana: 'Asia/Kolkata',
++    days: [
++      ItineraryDay(
++        dayNumber: 1,
++        dateIso8601: '2026-11-25',
++        title: 'Arrival',
++        primaryTimezoneIana: 'Asia/Kolkata',
++        events: [
++          ItineraryEvent(
++            eventId: 'evt_4_1793281756087',
++            title: 'Airport pickup',
++            eventType: EventType.transport,
++            startIso8601: '2026-11-25T09:00:00',
++            endIso8601: '2026-11-25T10:00:00',
++            timezoneIana: 'Asia/Kolkata',
++          ),
++        ],
++      ),
++    ],
++  );
++  const exportId = 'tt_44d3eba4601175df166784594a9fb318';
++
++  test('updated exports replace the matching trip and preserve local state',
++      () async {
++    final oldFile = await manager.exportTripUseCase.execute(trip: legacyKashmir);
++    await manager.importTripFromContainer(oldFile);
++    await manager.tripRepository.saveTrip(legacyKashmir.copyWith(isCompleted: true));
++    await manager.toggleChecklistItem('4', 'chk_passport', true);
++
++    final first = legacyKashmir.copyWith(
++      tripId: exportId,
++      legacyTripId: '4',
++      revision: 1,
++      title: 'Kashmir revised',
++    );
++    final revisionOne = await manager.exportTripUseCase.execute(trip: first);
++    await manager.importTripFromContainer(revisionOne);
++    expect(await manager.tripRepository.getTripById('4'), isNull);
++    expect((await manager.getChecklist(exportId)).completedCount, 1);
++
++    final revisionTwo = await manager.exportTripUseCase.execute(
++      trip: first.copyWith(revision: 2, title: 'Kashmir revised again'),
++    );
++    final restarted = MobileTripManagerService.fromDirectory(tempDir);
++    await Future.wait([
++      restarted.importTripFromContainer(revisionTwo),
++      restarted.importTripFromContainer(revisionOne),
++      restarted.importTripFromContainer(oldFile),
++    ]);
++
++    final saved = (await restarted.listAllTrips()).single;
++    expect(saved.tripId, exportId);
++    expect(saved.title, 'Kashmir revised again');
++    expect(saved.revision, 2);
++    expect(saved.isCompleted, isTrue);
++    expect((await restarted.getChecklist(exportId)).completedCount, 1);
++    expect((await restarted.getActiveTrip())?.tripId, exportId);
++  });
++
++  test('a different itinerary keeps its own entry despite a matching legacy ID',
++      () async {
++    await manager.tripRepository.saveTrip(legacyKashmir);
++    final unrelated = legacyKashmir.copyWith(
++      tripId: exportId,
++      legacyTripId: '4',
++      revision: 1,
++      days: [],
++    );
++    final bytes = await manager.exportTripUseCase.execute(trip: unrelated);
++    await manager.importTripFromContainer(bytes);
++    expect((await manager.listAllTrips()).map((trip) => trip.tripId),
++        unorderedEquals(['4', exportId]));
++  });
++
++  test('a revision with an invalid identity cannot replace a saved trip',
++      () async {
++    await manager.tripRepository.saveTrip(legacyKashmir);
++    final invalid = legacyKashmir.copyWith(revision: 1, title: 'Invalid revision');
++    final bytes = await manager.exportTripUseCase.execute(trip: invalid);
++    await expectLater(manager.importTripFromContainer(bytes), throwsFormatException);
++    expect((await manager.listAllTrips()).single.title, 'Kashmir');
++  });
++
+   test('full offline trip container import, export, and checklist lifecycle',
+       () async {
+     // 1. Create a trip with an attached photo blob

@@ -1,0 +1,14 @@
+\section{Discussion}
+\subsection{Who owns the schedule and when it changes}
+A traveler can receive a new TripyTravy snapshot through an existing transfer channel and import it after going offline. This avoids a dependency on a vendor itinerary service during import. It also gives the agent responsibility for redistributing each revision and the traveler responsibility for opening it. Revision comparison orders the files the traveler has already received. It cannot tell the traveler that an unseen revision exists.
+
+The entire snapshot can initialize a new device. Repeated attachments inside one export occupy one blob per distinct payload, and an existing blob may be reused on the recipient's device. Each file transfer still carries the packaged assets. The sender's messaging service, an external document viewer, and a map handoff have their own data and availability boundaries.
+
+\subsection{Feature and evaluation limits}
+The feature trace found gaps between the desktop forms and the serialized records, including default time zones and the loss of some transport modes during export. The stable workflows specify how those fields should reach the traveler's timeline. Template sanitization, embedded maps, and built-in offline PDF reading also sit outside the evaluated end-to-end paths.
+
+The size experiment uses synthetic equal-length documents. Savings on a typical tour would depend on its media and the extent of document reuse. The repository and widget tests establish behavior for their test cases. Physical-device file delivery, airplane-mode operation, memory, latency, and crash recovery across trip and asset writes were outside the measured scope. The Travefy comparison uses public product documentation.
+
+A forged beta metadata field could misstate the revision used for replacement. Authentication in the stable path checks that the envelope and payload are intact under the derived key. The shared password model leaves publisher identity unresolved, as Section~\ref{sec:password} describes.
+
+Release validation for the protected workflow needs a full Creator-to-Viewer test. The critical cases are a first-time import, a cancel or incorrect password with an itinerary already saved, and a password-only revision that updates that itinerary in place. The test should also check that the earlier file cannot replace the newer saved revision and that the traveler can reopen the saved itinerary after restarting the app.

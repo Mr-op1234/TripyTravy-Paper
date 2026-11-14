@@ -1,0 +1,36 @@
+\section{Results}
+\label{sec:evaluation}
+These results describe the evaluated beta paths and the separately tested Rust library. The end-to-end transfer-password workflow and the five-attempt policy are stable design specifications.
+
+\subsection{Functional and revision tests}
+The desktop suite passed 52 tests, the mobile suite passed 23, and the Dart core passed 13. A separate three-test Rust suite checked round-trip packing, PIN handling, and authenticated header tamper rejection for the native prototype. Those Rust results concern the isolated library.
+
+The desktop tests cover date-based records, event and document persistence, description formatting, image-upload controls, and export naming and metadata. The mobile tests cover picker import, day navigation, photo-gallery behavior, document presentation, and the ordered map URL. These tests exercise application logic and widgets. The Android platform handoffs were verified by source inspection.
+
+The revision tests submit multiple imports to the same service instance, including a newer snapshot followed by earlier files. The repository retains the newer revision and a single trip entry. The tests also cover separate entries for unrelated itineraries with the same legacy number, and rejection of a non-versioned identifier carrying a positive revision. The desktop export test inspects the emitted identifier and verifies that the next reservation advances its revision.
+
+The probe imported an existing 2,638,655-byte Kashmir export and marked one packing item complete. It then exported a modified copy with the permanent identifier, a revised title, and revision~1. After import, the repository contained one trip with the revised title and one completed checklist item. Reopening the original file left revision~1 in place. This probe exercises the file-based client core. The application suites separately exercise the desktop export control and mobile file-picker path.
+
+\subsection{Package size}
+All document records survived export and import. Table~\ref{tab:dedup} reports the package sizes. The reduction in total package bytes is $100(1-B_s/B_d)$ percent, where $B_s$ and $B_d$ are the measured package sizes with shared and distinct payloads, respectively.
+
+\begin{table}[t]
+\caption{Export size for equal-length document payloads}
+\label{tab:dedup}
+\centering
+\small
+\begin{tabular}{rrrr}
+\toprule
+References & Shared (B) & Distinct (B) & Reduction \\
+\midrule
+2 & 1,049,768 & 2,098,680 & 50.0\% \\
+4 & 1,050,196 & 4,196,932 & 75.0\% \\
+8 & 1,051,052 & 8,393,436 & 87.5\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The shared-payload package grows by 1,284 bytes between two and eight references, because additional records add metadata without adding a second blob. The experiment measures byte equality in a controlled fixture. Savings for a real trip depend on how often passengers need the same attachment.
+
+\subsection{Container mutation}
+The probe packed a JSON object with the title \texttt{Trip A}. It changed the single wrapped byte for the final letter, then decoded the file without changing its trailer. The decoder returned \texttt{Trip B}. The test isolates the frame-level check and shows that it accepts altered metadata. Hash checks on assets do not cover that field.

@@ -1,0 +1,19 @@
+\section{Revision Handling}
+\subsection{Identity and export ordering}
+The Creator allocates a 128-bit random identifier in SQLite when a trip is first exported by the versioned path. It encodes the value as 32 hexadecimal digits with a \texttt{tt\_} prefix. The database stores it with a revision counter. The export path reserves the next revision in a database transaction before compiling the file. A failed export can leave a gap in the sequence. A title change has no effect on the trip identifier.
+
+\subsection{Acceptance and replacement}
+For a versioned import, let $i$ denote the trip identifier and $r$ the incoming revision. Let $r_s$ be the saved revision for $i$ when a versioned entry exists. The beta runs the revision decision after decoding and asset validation. The stable protected path also requires successful envelope authentication before comparing revisions. The service applies the following rule.
+\begin{equation}
+\operatorname{decision}(i,r)=
+\begin{cases}
+\text{create}, & \text{no matching entry},\\
+\text{replace}, & r>r_s,\\
+\text{keep saved}, & r\leq r_s.
+\end{cases}
+\label{eq:revisions}
+\end{equation}
+The Flutter file picker and Android file-open route reach the same import service. Imports through one service instance are queued, so simultaneous submissions do not interleave the revision decisions. The repository writes the accepted trip to a staging file and renames it into the trip's local path. A successful replacement writes a complete snapshot into the existing entry. The accepted snapshot occupies the existing itinerary entry, and the replaced snapshot is discarded from the trip library. The checklist remains a separate record under the same identifier, and the importer copies the local completion flag into the accepted snapshot. The original file may still exist in the transfer application or Downloads.
+
+\subsection{Migration from numeric identifiers}
+Earlier exports exposed a numeric SQLite row ID, which could coincide across separate Creator databases. For migration, a versioned package carries that former ID. The Viewer requires a matching numeric ID and at least one shared event identifier before migrating a saved legacy entry. It transfers the checklist, preserves completion state, saves the versioned record, and removes the migrated legacy entry. If the legacy trip and incoming snapshot have no event in common, the Viewer cannot establish that correspondence and saves the versioned trip separately. The revision rule in (\ref{eq:revisions}) applies directly once the permanent identifier is in use.
