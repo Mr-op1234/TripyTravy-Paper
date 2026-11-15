@@ -1,9 +1,9 @@
 \section{Revision Handling}
 \subsection{Identity and export ordering}
-The Creator allocates a 128-bit random identifier in SQLite when a trip is first exported by the versioned path. It encodes the value as 32 hexadecimal digits with a \texttt{tt\_} prefix. The database stores it with a revision counter. The export path reserves the next revision in a database transaction before compiling the file. A failed export can leave a gap in the sequence. A title change has no effect on the trip identifier.
+On the first versioned export, the Creator assigns the trip a random identifier and saves it with a revision counter. It reserves the next revision in a database transaction before compiling the file, so a failed export can leave a gap. Renaming the trip keeps its identifier.
 
 \subsection{Acceptance and replacement}
-For a versioned import, let $i$ denote the trip identifier and $r$ the incoming revision. Let $r_s$ be the saved revision for $i$ when a versioned entry exists. The beta runs the revision decision after decoding and asset validation. The stable protected path also requires successful envelope authentication before comparing revisions. The service applies the following rule.
+For a versioned import, let $i$ be the trip identifier, $r$ the incoming revision, and $r_s$ the saved revision if there is a matching versioned entry. The beta decodes the file and validates its assets before comparing revisions. It also authenticates a protected package before comparing revisions and rejects an unprotected replacement for a previously protected entry. The following rule applies once those checks pass.
 \begin{equation}
 \operatorname{decision}(i,r)=
 \begin{cases}
@@ -13,7 +13,9 @@ For a versioned import, let $i$ denote the trip identifier and $r$ the incoming 
 \end{cases}
 \label{eq:revisions}
 \end{equation}
-The Flutter file picker and Android file-open route reach the same import service. Imports through one service instance are queued, so simultaneous submissions do not interleave the revision decisions. The repository writes the accepted trip to a staging file and renames it into the trip's local path. A successful replacement writes a complete snapshot into the existing entry. The accepted snapshot occupies the existing itinerary entry, and the replaced snapshot is discarded from the trip library. The checklist remains a separate record under the same identifier, and the importer copies the local completion flag into the accepted snapshot. The original file may still exist in the transfer application or Downloads.
+The Flutter picker and Android file-open action use the same import service. Each service instance queues its imports so that one revision decision finishes before the next begins. To replace a saved trip, the repository stages the complete snapshot and renames it into the existing trip path. The checklist stays in a separate record under the same trip ID, and the importer copies the local completion flag to the accepted trip. The original transfer file may remain in the sending app or in Downloads.
+
+The stable interface distinguishes a newly saved itinerary, a successful replacement, a retained newer itinerary, and a rejected package. If the saved entry is deleted, the beta can accept a subsequent valid file as a fresh trip because the revision check consults the saved entry. An import with no matching stable identifier also creates a separate entry even if two titles match.
 
 \subsection{Migration from numeric identifiers}
-Earlier exports exposed a numeric SQLite row ID, which could coincide across separate Creator databases. For migration, a versioned package carries that former ID. The Viewer requires a matching numeric ID and at least one shared event identifier before migrating a saved legacy entry. It transfers the checklist, preserves completion state, saves the versioned record, and removes the migrated legacy entry. If the legacy trip and incoming snapshot have no event in common, the Viewer cannot establish that correspondence and saves the versioned trip separately. The revision rule in (\ref{eq:revisions}) applies directly once the permanent identifier is in use.
+Older exports carried a numeric SQLite row ID. Two Creators with separate databases could issue the same number. A versioned package carries the former ID for migration. The Viewer migrates a saved legacy entry when that ID matches and the two trips share at least one event identifier. It transfers the checklist and completion state, saves the versioned record, and removes the legacy entry. With no shared event, the Viewer saves the incoming trip separately. Once the permanent ID is in use, it applies (\ref{eq:revisions}).

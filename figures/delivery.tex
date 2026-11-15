@@ -7,8 +7,8 @@
   both/.style={{Stealth[length=4pt]}-{Stealth[length=4pt]}, semithick}]
   \node[component] (author) at (-20mm,0) {Desktop Creator};
   \node[component] (sqlite) at (20mm,0) {Local SQLite\\editable itinerary};
-  \node[transfer] (file) at (0,-14mm) {\texttt{.tt} file\\Trip ID, revision, schedule, and embedded assets};
-  \node[transfer,below=5mm of file] (viewer) {Mobile Viewer\\Decode, validate, and compare revisions};
+  \node[transfer] (file) at (0,-14mm) {Passphrase-protected \texttt{.tt} file\\Trip ID, revision, schedule, and embedded assets};
+  \node[transfer,below=5mm of file] (viewer) {Mobile Viewer\\Unlock, validate, and compare revisions};
   \node[component] (records) at ([xshift=-20mm,yshift=-9mm]viewer.south) {Local trip store\\and asset files};
   \node[component] (check) at ([xshift=20mm,yshift=-9mm]viewer.south) {Local traveler\\checklist};
   \draw[both] (author) -- (sqlite);

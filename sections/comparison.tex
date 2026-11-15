@@ -1,6 +1,6 @@
 \section{Functional Comparison with Travefy}
 \label{sec:comparison}
-Both products cover the sequence from an advisor's trip outline to a traveler opening a scheduled item. Table~\ref{tab:features} compares the observed TripyTravy beta workflows with Travefy's documented behavior. Section~\ref{sec:features} specifies the additional stable workflows.
+Both products cover the agent's initial trip outline through the traveler's use of a scheduled item. We compared the TripyTravy beta with Travefy's documented workflows in Table~\ref{tab:features}. Section~\ref{sec:features} describes the additional stable workflows.
 
 \begin{table*}[t]
 \caption{Documented itinerary workflows and implementation boundaries}
@@ -25,7 +25,7 @@ Use itinerary locations &
 Store place data and send a saved place or ordered day stops to Google Maps. &
 Display places with addresses on the itinerary map \cite{travefymap}. \\
 Share and read &
-Send a \texttt{.tt} snapshot and open it in the mobile Viewer. The file provides the schedule and bundled assets for local viewing. &
+Send a passphrase-protected \texttt{.tt} snapshot. The traveler unlocks it at import and can later open the locally saved schedule and bundled assets. &
 Share a web link, invitation, or PDF. Trip Plans can save the trip on a device. Its traveler account is optional for basic viewing \cite{travefyshare,travefyapp}. \\
 Issue and receive a revision &
 Export the edited itinerary again and send the new file. The receiver applies the newer matching revision on import. &
@@ -37,6 +37,6 @@ Use the offline download workflow. Travefy advises opening items and attachments
 \end{tabularx}
 \end{table*}
 
-The booking examples are where the functional comparison matters most. An agent can represent a hotel arrival as a timed lodging card and put the voucher next to it in either product. In TripyTravy that information enters SQLite and is exported as part of the trip package. In Travefy the same task is part of a hosted advisor workflow, with tools for importing supplier content and reusing library entries \cite{travefybuilder}. Similarly, a flight card in TripyTravy records details entered by the agent, while Travefy documents a lookup path for populating a flight event \cite{travefyflight}. Neither the event form nor the category label alone establishes a live source of booking updates.
+In either product, an agent can schedule a hotel arrival and attach its voucher. TripyTravy stores that information in SQLite and writes it to the trip package on export. Travefy hosts the itinerary and documents tools for importing supplier content and reusing library entries \cite{travefybuilder}. In TripyTravy the agent enters flight details. Travefy documents a lookup that populates a flight event \cite{travefyflight}. These form fields alone do not establish a live feed of booking updates.
 
-Travefy sells the advisor tools in a subscription that also includes business functions beyond itinerary authoring \cite{travefypricing}. TripyTravy's measured exchange path has no account service or hosted itinerary record. The products share authoring tasks, but their publish steps leave different state on the traveler's device. TripyTravy's file contains an independently readable copy. Travefy's hosted link identifies the current online itinerary, and a downloaded version can also be read offline.
+Travefy includes its advisor tools in a subscription with other business functions \cite{travefypricing}. TripyTravy's evaluated exchange works without an account service or a hosted itinerary record. Each TripyTravy file carries its own copy of the schedule. A Travefy link points to the current hosted version, and travelers can download a copy for offline reading.

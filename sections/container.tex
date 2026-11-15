@@ -1,49 +1,15 @@
 \section{The \texttt{.tt} Container and Security Design}
 \label{sec:container}
 
-\subsection{Creating and reading the current file}
-A \texttt{.tt} file carries one complete itinerary snapshot. On export, the Creator reserves a revision in SQLite, reads the trip, and maps its days, events, and documents into a shared \texttt{TripPackage}. The export use case serializes the metadata and appends the unique attachment blobs. The Dart adapter writes the binary envelope described in Table~\ref{tab:container}. The inner stream begins with a four-byte big-endian metadata length, followed by UTF-8 JSON and the attachment bytes. The itinerary ID and revision travel inside the JSON. The stable format uses the envelope version and flags to select a decoder.
+\subsection{Snapshot structure and compatibility}
+A \texttt{.tt} file contains the complete itinerary and its embedded attachments. The Creator assigns the trip ID and revision, serializes the itinerary as JSON in the protected beta, and includes one copy of each distinct attachment. The Viewer selects a decoder by format and version. It can still read supported legacy files, which should be treated as unprotected. The Creator writes every new export in the passphrase-protected format. If authentication fails, the Viewer ends that import attempt. It uses the legacy decoder only for files it identifies as legacy.
 
-\begin{table}[t]
-\caption{Current Dart envelope and native prototype envelope}
-\label{tab:container}
-\centering
-\small
-\renewcommand{\arraystretch}{1.12}
-\begin{tabularx}{\columnwidth}{@{}p{0.2\columnwidth}*{2}{>{\raggedright\arraybackslash}X}@{}}
-\toprule
-Bytes & Dart application path & Rust prototype \\
-\midrule
-0--7 & \texttt{TTRV}, version, flags & Same field layout \\
-8--23 & Fixed bytes & Random 16-byte salt \\
-24--35 & Fixed bytes & Random 12-byte GCM nonce \\
-36--39 & Wrapped payload length & Ciphertext length \\
-40 onward & XOR-wrapped inner stream & GCM ciphertext of Zstandard-compressed inner stream \\
-Final 16 & Repeated check byte & GCM authentication tag \\
-\bottomrule
-\end{tabularx}
-\end{table}
+\subsection{Authenticated encryption in the applications}
+Both apps use the same Dart codec. On each export, the Creator requires a passphrase and generates a random salt and nonce. Argon2id and HKDF-SHA256 derive a key from the passphrase and salt \cite{argonrfc,hkdfrfc}. AES-256-GCM encrypts the itinerary metadata and attachments and authenticates the header \cite{gcm}. The Viewer uses the received salt and the entered passphrase to derive the key, then verifies the envelope before parsing the metadata. The filename remains visible. The codec limits the protected payload to 64 MiB and runs key derivation and encryption outside the interface isolate.
 
-The Viewer checks the \texttt{TTRV} marker, reads the payload length, and reverses the XOR wrapper. It decodes the JSON, checks attachment bounds and the applicable digests, and saves the trip if the revision rules accept it. TripyTravy supplies the official writer and reader for this application format. The extension and marker identify the expected layout. A compatible third-party program could read or produce the same bytes.
-
-The beta applications use the Dart wrapper. It uses a fixed derived byte for ordinary exports and reduces a supplied PIN to one byte in the optional adapter path. The trailer check depends on the derived byte and flags. The application export and import screens do not provide the planned secure PIN workflow. The standalone Rust library implements AES-256-GCM, and neither Flutter application calls that library in the evaluated build. The two adapters share header fields and use incompatible payloads and trailers. A production reader needs explicit format dispatch. A failed authenticated import must terminate without a legacy-decoder fallback.
-
-\subsection{Salt and key derivation in the Rust prototype}
-The architecture specification describes AES-256-GCM with a per-file salt and two key derivation modes. The Rust code generates a fresh 16-byte salt $s$ and 12-byte nonce $n$ for each export and writes both to the header. It reconstructs a 32-byte seed $S$ from constants. In standard mode, the keying input $I$ is $S$. In PIN mode, the library takes the PIN $P$ and computes
-\begin{align}
-D &= \operatorname{Argon2id}(P,s;m,t,p,L), \\
-I &= S \,\|\, D,
-\end{align}
-where $\|$ denotes concatenation. The prototype uses 19,456 KiB of memory, two passes, one lane, and a 32-byte output for $D$ \cite{argonrfc}. In either mode the 32-byte AES key $K$ is
-\begin{align}
-R &= \operatorname{HKDF\!-\!Extract}(s,I), \\
-K &= \operatorname{HKDF\!-\!Expand}(R,\ell,32),
-\end{align}
-with SHA-256 and a separate context label $\ell$ for standard and PIN mode \cite{hkdfrfc}. The export does not store the key, seed, or PIN in the header.
-
-The design specifies Protobuf metadata for the native format. The standalone library accepts serialized bytes from its caller and does not perform that serialization itself. It compresses the length-prefixed stream with Zstandard and encrypts it with AES-256-GCM under $K$ and nonce $n$. It authenticates the 40-byte header as associated data and appends the 16-byte tag \cite{gcm}. On import, the reader uses the salt from the received header, the same derivation procedure, and the entered PIN when required. Matching inputs reproduce $K$. The reader uses the stored nonce and checks the authentication tag before decompressing. A wrong PIN typically gives a different key, so authentication fails. The importer generates no new salt for decryption. The per-file key controls decryption, while the itinerary ID matches the trip across revisions.
+The earlier Rust prototype tested authenticated packing and compression on its own. The apps now use the Dart codec, and the size experiment measures the savings from storing one copy of each distinct attachment.
 
 \input{sections/stable-password}
 
-\subsection{Five-attempt policy in the stable design}
-The stable design includes a local attempt policy for protected imports. After five failed authentication attempts on a writable import copy, the Viewer overwrites part of that copy's ciphertext. The altered copy then fails GCM authentication even with the correct password. The policy acts on the incoming file and leaves any saved itinerary untouched. A file received from a sharing application may only be available as a read-only stream. In that case the policy can act on a private staging copy. Originals retained by the sender, messaging application, or recipient remain usable, and a separate reader can make offline guesses. The policy can also deny a legitimate traveler access to the affected copy. Its implementation and behavior on device are outside the beta measurements.
+\subsection{Validation and publication to local storage}
+Before asking for a passphrase, the reader checks the file framing and protected payload size. After authentication, it checks the trip ID and revision, verifies attachment extents and digests, and checks that each protected record points to an included asset. It finishes those checks before writing assets or saving the trip. Legacy imports also undergo identity, bounds, and storage-key checks. The Viewer records whether a saved trip came from an authenticated transfer so it can reject a newer unprotected replacement. Recovery from an interruption between asset, schedule, and traveler-state writes still needs device testing.

@@ -1,5 +1,17 @@
 {
   "legacy_wrapper_accepts_modified_metadata": true,
+  "protected_beta": {
+    "creator_host_tests_passed": 54,
+    "viewer_host_tests_passed": 24,
+    "dart_core_host_tests_passed": 15,
+    "windows_release_build_succeeded": true,
+    "android_release_build_succeeded": true,
+    "android_development_signature_verified": true,
+    "independent_codec_roundtrip_both_directions": true,
+    "legacy_invalid_attachment_rejected_before_asset_writes_in_test": true,
+    "protected_size_probe_reproduced_deduplication_results": true,
+    "physical_device_delivery_evaluated": false
+  },
   "deduplication": [
     {
       "references": 2,
@@ -17,8 +29,7 @@
       "distinct_bytes": 8393436
     }
   ],
-  "kashmir": {
-    "fixture_bytes": 2638655,
+  "legacy_migration": {
     "saved_trips": 1,
     "saved_revision_after_replay": 1,
     "checklist_items_preserved": 1

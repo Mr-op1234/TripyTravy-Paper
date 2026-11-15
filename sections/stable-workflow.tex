@@ -1,0 +1,21 @@
+\section{Stable Release Workflow}
+\label{sec:stable-workflow}
+
+\subsection{Authoring a multi-leg itinerary}
+In this example, the trip includes a late flight from Kolkata to Zurich, a hotel arrival, and rail journeys on two days. The agent sets the trip dates and primary time zone, then adds each event to the relevant day. The trip header stores the default locale and currency. A separate traveler directory stores contacts and passport expiry dates. The Creator uses the trip end date to check passport validity. The agent chooses which details to include in the files sent to travelers.
+
+The flight card stores departure and arrival dates, local times, and IANA zones. The timeline orders timed events by their corresponding instants and displays each flight endpoint in its own zone. An arrival after midnight keeps its next-day date. An advisory with no time keeps its display position. The transport card stores separate pickup and drop-off details, and the transport mode helps determine the route connector when one is available. After moving or editing a card, the agent can check for overlaps. The Viewer displays the saved time-zone labels even when the phone uses a different zone.
+
+The agent puts the hotel voucher on the lodging card and attaches the same rail pass to two events. Emergency contacts go in Information and Documents, which travelers can open from the trip overview. The agent can preview each day and check that a voucher opens with a readable barcode. Eligible photos can be resized, and the export preserves the usability of tickets and other documents. Both references to the rail pass point to the same content hash, so the snapshot holds one copy of its bytes.
+
+\subsection{Publishing, receiving, and opening a trip}
+The Creator saves the snapshot in a timestamped file and keeps the editable trip in its database. The agent can send the file by email, in a messaging app, or through direct device transfer. The Creator requires a passphrase and suggests sending it separately. Once the file is on the device, the traveler can import it offline through the Viewer picker or a system file-open action. The Viewer verifies the protected file before saving the trip.
+
+The trip overview has a banner, a day list, trip documents, and a packing checklist. Within a day, the traveler can swipe to a nearby day or use the index to open a particular event. Embedded photos open in the gallery, and the Android beta sends a bundled voucher to a compatible installed app for offline reading. The stable PDF reader would provide zoom and page thumbnails. The MVP opens locations and ordered day routes through external links, so their coverage and routing depend on Google Maps. The stable design could include basemaps and saved geometry for offline use in the packaged area.
+
+\subsection{Updating the trip and reusing its content}
+If the pickup moves, the agent exports again from the original workspace. The new file keeps the trip ID and carries a higher revision. After import, one saved entry holds the corrected schedule and retains the traveler's checked items and completion flag. Reopening the old file leaves the newer schedule in place. The traveler has to receive a new file to learn of a revision. The agent can use the same process to change only the passphrase. After import, local device and storage controls govern access to the saved trip.
+
+Importing a \texttt{.tt} into the beta Creator makes an editable copy. The Creator assigns a new workspace record, reconstructs the days and events, and gives subsequent exports a new trip identity. Updating the traveler's existing itinerary requires an export from the original workspace. A workspace restore would need to recover the original export ID and revision counter.
+
+The stable design includes a printable PDF for the schedule, booking references, and emergency information. An editable community template keeps the reusable parts of the trip and removes traveler records, structured booking references, and private attachments. Template checks also need to cover free text, image metadata, banners, and embedded documents. Before publishing either output, the agent needs to be able to see what it contains.
